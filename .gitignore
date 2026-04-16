@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+*.tsbuildinfo
+
+# Environment (keep .env.example tracked)
+.env
+.env.local
+.env.*.local
+
+# Logs and caches
+logs/
+*.log
+npm-debug.log*
+.pnpm-debug.log*
+.cache/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Test / coverage
+coverage/
+.nyc_output/
+
+# Vite
+apps/frontend/dist/
+apps/admin/dist/
