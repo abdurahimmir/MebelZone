@@ -1,4 +1,10 @@
-import { IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import {
+  IsString,
+  Length,
+  Matches,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export class RegisterPhoneDto {
   @IsString()
@@ -14,4 +20,8 @@ export class RegisterPhoneDto {
   @MinLength(6)
   @MaxLength(128)
   password!: string;
+
+  @IsString()
+  @Length(6, 6)
+  otp!: string;
 }

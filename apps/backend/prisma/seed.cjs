@@ -20,10 +20,10 @@ async function main() {
     where: { key: 'auth.phone.enabled' },
     create: {
       key: 'auth.phone.enabled',
-      valueJson: false,
+      valueJson: true,
     },
     update: {
-      valueJson: false,
+      valueJson: true,
     },
   });
 

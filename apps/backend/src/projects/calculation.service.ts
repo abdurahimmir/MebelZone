@@ -42,7 +42,15 @@ export class CalculationService {
 
     const materialAgg = new Map<
       string,
-      { title: string; areaM2: number; sheetsEstimate: number; cost: number }
+      {
+        title: string;
+        category: string;
+        sheetW: number;
+        sheetH: number;
+        areaM2: number;
+        sheetsEstimate: number;
+        cost: number;
+      }
     >();
 
     let panelCount = 0;
@@ -57,7 +65,9 @@ export class CalculationService {
       if (item.itemType === 'panel') {
         panelCount += 1;
         if (tMm !== null && tMm < 16) {
-          warnings.push('Тонкий материал панели: проверьте нагрузку и крепёж.');
+          warnings.push(
+            'Тонкий материал панели: проверьте нагрузку и крепёж (рекомендуется ≥16 мм для несущих).',
+          );
         }
       }
 
@@ -66,6 +76,13 @@ export class CalculationService {
           where: { id: item.materialId },
         });
         if (!mat) continue;
+
+        const cat = mat.category.toUpperCase();
+        if (cat.includes('MDF') && tMm !== null && tMm < 18) {
+          warnings.push(
+            'МДФ: при сверлении мелкого крепежа возможны трещины — используйте предварительное зенкерование и корректный шаг.',
+          );
+        }
 
         const areaM2 = (wMm * hMm) / 1_000_000;
         const sheetAreaM2 = (mat.sheetWidthMm * mat.sheetHeightMm) / 1_000_000;
@@ -84,6 +101,9 @@ export class CalculationService {
         } else {
           materialAgg.set(mat.id, {
             title: mat.title,
+            category: mat.category,
+            sheetW: mat.sheetWidthMm,
+            sheetH: mat.sheetHeightMm,
             areaM2,
             sheetsEstimate,
             cost,
@@ -95,12 +115,14 @@ export class CalculationService {
     const materials = [...materialAgg.entries()].map(([id, v]) => ({
       materialId: id,
       title: v.title,
+      category: v.category,
       areaM2: Number(v.areaM2.toFixed(3)),
       sheetsEstimate: v.sheetsEstimate,
       cost: Number(v.cost.toFixed(2)),
     }));
 
     const hardwareUnits = Math.max(4, panelCount * 4);
+    const hingeEstimate = Math.max(0, Math.floor(panelCount / 2));
     const hardware = [
       {
         category: 'fastener',
@@ -108,6 +130,13 @@ export class CalculationService {
         unit: 'pcs',
         quantity: hardwareUnits,
         note: 'Грубая оценка по числу панелей',
+      },
+      {
+        category: 'hinge',
+        title: 'Петли (оценка)',
+        unit: 'pcs',
+        quantity: hingeEstimate,
+        note: 'Оценка: пара петель на каждые две панели (двери не моделируются отдельно)',
       },
     ];
 
@@ -124,21 +153,31 @@ export class CalculationService {
     const edging = [
       {
         lengthM: Number(edgingM.toFixed(2)),
-        note: 'Суммарный периметр панелей (грубая оценка кромки)',
+        note: 'Суммарный периметр панелей (оценка кромки по периметру)',
       },
     ];
 
+    const cuttingSheets = [...materialAgg.values()].map((v) => ({
+      title: v.title,
+      sheetMm: `${v.sheetW}x${v.sheetH}`,
+      sheetsNeeded: v.sheetsEstimate,
+      panelAreaM2: Number(v.areaM2.toFixed(3)),
+    }));
+
     const cutting = {
-      note: 'Раскрой: на этом этапе возвращается заглушка; детальный раскрой — в следующих итерациях.',
+      strategy: 'greedySheetsByMaterial',
+      note: 'Каждая панель учитывается в площади материала; число листов = ceil(суммарная площадь / площадь листа). Полный nesting — отдельный модуль.',
       panels: panelCount,
+      sheets: cuttingSheets,
     };
 
     if (panelCount === 0) {
       warnings.push('В проекте нет панелей для расчёта.');
     }
 
+    const hingeCost = hingeEstimate * 2.5;
     const materialTotal = materials.reduce((s, m) => s + m.cost, 0);
-    const hardwareTotal = hardwareUnits * 0.12;
+    const hardwareTotal = hardwareUnits * 0.12 + hingeCost;
     const totals = {
       material: Number(materialTotal.toFixed(2)),
       hardware: Number(hardwareTotal.toFixed(2)),

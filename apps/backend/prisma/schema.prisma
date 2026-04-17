@@ -59,6 +59,7 @@ model User {
   adminAuditLogs AdminAuditLog[]
   renderJobs    RenderJob[]
   exportArtifacts ExportArtifact[]
+  backgroundJobs BackgroundJob[]
 
   @@index([role])
   @@index([status])
@@ -129,6 +130,7 @@ model Project {
   extraCostItems ExtraCostItem[]
   renderJobs    RenderJob[]
   exportArtifacts ExportArtifact[]
+  backgroundJobs BackgroundJob[]
 
   @@index([userId])
   @@index([companyId])
@@ -341,6 +343,45 @@ enum ExportFormat {
   PDF
   DXF
   INTERNAL
+}
+
+enum BackgroundJobKind {
+  EXPORT_JSON
+  EXPORT_PDF
+  EXPORT_DXF
+  EXPORT_INTERNAL
+  RENDER_PREVIEW
+}
+
+enum BackgroundJobStatus {
+  PENDING
+  ACTIVE
+  COMPLETED
+  FAILED
+}
+
+model BackgroundJob {
+  id          String               @id @default(uuid()) @db.Uuid
+  kind        BackgroundJobKind
+  status      BackgroundJobStatus  @default(PENDING)
+  userId      String               @map("user_id") @db.Uuid
+  projectId   String               @map("project_id") @db.Uuid
+  payloadJson Json?                @map("payload_json")
+  resultKey   String?              @map("result_key") @db.Text
+  mimeType    String?              @map("mime_type")
+  byteSize    Int?                 @map("byte_size")
+  error       String?              @db.Text
+  bullJobId   String?              @map("bull_job_id") @db.Text
+  createdAt   DateTime             @default(now()) @map("created_at")
+  updatedAt   DateTime             @updatedAt @map("updated_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([status])
+  @@map("background_jobs")
 }
 
 model UsageMonthlyCounter {

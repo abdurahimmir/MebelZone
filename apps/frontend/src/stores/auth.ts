@@ -30,6 +30,44 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function sendPhoneOtp(phone: string) {
+    return apiFetch<{ ok: boolean; devCode?: string }>('/auth/phone/send-otp', {
+      method: 'POST',
+      json: { phone },
+    })
+  }
+
+  async function registerPhone(fullName: string, phone: string, password: string, otp: string) {
+    loading.value = true
+    try {
+      const res = await apiFetch<{ accessToken: string; refreshToken: string; expiresIn: number }>(
+        '/auth/register/phone',
+        { method: 'POST', json: { fullName, phone, password, otp } },
+      )
+      setTokens(res.accessToken, res.refreshToken)
+      await loadMe()
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function loginPhone(phone: string, password?: string, otp?: string) {
+    loading.value = true
+    try {
+      const body: Record<string, string> = { phone }
+      if (otp) body.otp = otp
+      else if (password) body.password = password
+      const res = await apiFetch<{ accessToken: string; refreshToken: string; expiresIn: number }>(
+        '/auth/login/phone',
+        { method: 'POST', json: body },
+      )
+      setTokens(res.accessToken, res.refreshToken)
+      await loadMe()
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function registerEmail(fullName: string, email: string, password: string) {
     loading.value = true
     try {
@@ -68,5 +106,16 @@ export const useAuthStore = defineStore('auth', () => {
     me.value = null
   }
 
-  return { me, loading, isAuthenticated, loginEmail, registerEmail, loadMe, logout }
+  return {
+    me,
+    loading,
+    isAuthenticated,
+    loginEmail,
+    loginPhone,
+    registerEmail,
+    registerPhone,
+    sendPhoneOtp,
+    loadMe,
+    logout,
+  }
 })

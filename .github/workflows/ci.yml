@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install
+        run: npm ci
+      - name: Lint backend
+        run: npm run lint -w backend
+      - name: Unit tests backend
+        run: npm run test -w backend
+      - name: E2E tests backend
+        env:
+          RUN_TESTCONTAINERS: '1'
+        run: npm run test:e2e -w backend
+      - name: Build backend
+        run: npm run build -w backend
+      - name: Build frontend
+        run: npm run build -w frontend
+      - name: Build admin
+        run: npm run build -w admin

@@ -1,13 +1,20 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
 import {
-  ExportFormat,
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  BackgroundJobKind,
+  BackgroundJobStatus,
   Prisma,
   ProjectStatus,
-  RenderJobStatus,
 } from '@prisma/client';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { Queue } from 'bullmq';
 import { BillingService } from '../billing/billing.service';
 import { ClientsService } from '../clients/clients.service';
+import type { HeavyJobPayload } from '../jobs/project-heavy.processor';
+import { HEAVY_QUEUE } from '../jobs/project-heavy.processor';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { CalculationService } from './calculation.service';
@@ -24,6 +31,8 @@ export class ProjectsService {
     private readonly billing: BillingService,
     private readonly calc: CalculationService,
     private readonly storage: StorageService,
+    @InjectQueue(HEAVY_QUEUE)
+    private readonly heavyQueue: Queue<HeavyJobPayload>,
   ) {}
 
   list(userId: string) {
@@ -251,192 +260,116 @@ export class ProjectsService {
     return row;
   }
 
-  async exportJson(userId: string, id: string) {
-    await this.billing.getOrCheckQuota(userId, 'export');
-    const project = await this.prisma.project.findFirst({
-      where: { id, userId },
-      include: { items: true, client: true },
-    });
-    if (!project) throw new NotFoundException();
+  private async enqueueHeavy(
+    userId: string,
+    projectId: string,
+    kind: BackgroundJobKind,
+  ) {
+    await this.getOne(userId, projectId);
 
-    const body = Buffer.from(JSON.stringify(project, null, 2), 'utf8');
-    const key = await this.storage.saveBytes(
-      `exports/${userId}`,
-      this.storage.randomFilename('.json'),
-      body,
-    );
-
-    await this.prisma.exportArtifact.create({
-      data: {
-        projectId: id,
-        userId,
-        format: ExportFormat.JSON,
-        storageKey: key,
-        mimeType: 'application/json',
-        byteSize: body.byteLength,
-      },
-    });
-
-    const tariff = await this.billing.getActiveTariffForUser(userId);
-    await this.billing.incrementUsage(
-      userId,
-      'exportsUsed',
-      tariff?.maxExportPerMonth ?? null,
-    );
-
-    return { downloadPath: key, mimeType: 'application/json' };
-  }
-
-  async exportPdf(userId: string, id: string) {
-    await this.billing.getOrCheckQuota(userId, 'export');
-    const project = await this.prisma.project.findFirst({
-      where: { id, userId },
-      include: { items: true },
-    });
-    if (!project) throw new NotFoundException();
-
-    const pdf = await PDFDocument.create();
-    const page = pdf.addPage([595.28, 841.89]);
-    const font = await pdf.embedFont(StandardFonts.Helvetica);
-    page.drawText(`Project: ${project.title}`, {
-      x: 50,
-      y: 780,
-      size: 18,
-      font,
-      color: rgb(0, 0, 0),
-    });
-    page.drawText(`Items: ${project.items.length}`, {
-      x: 50,
-      y: 750,
-      size: 12,
-      font,
-    });
-
-    const bytes = Buffer.from(await pdf.save());
-    const key = await this.storage.saveBytes(
-      `exports/${userId}`,
-      this.storage.randomFilename('.pdf'),
-      bytes,
-    );
-
-    await this.prisma.exportArtifact.create({
-      data: {
-        projectId: id,
-        userId,
-        format: ExportFormat.PDF,
-        storageKey: key,
-        mimeType: 'application/pdf',
-        byteSize: bytes.byteLength,
-      },
-    });
-
-    const tariff = await this.billing.getActiveTariffForUser(userId);
-    await this.billing.incrementUsage(
-      userId,
-      'exportsUsed',
-      tariff?.maxExportPerMonth ?? null,
-    );
-
-    return { downloadPath: key, mimeType: 'application/pdf' };
-  }
-
-  async exportDxf(userId: string, id: string) {
-    await this.billing.getOrCheckQuota(userId, 'export');
-    const project = await this.prisma.project.findFirst({
-      where: { id, userId },
-      include: { items: true },
-    });
-    if (!project) throw new NotFoundException();
-
-    const lines: string[] = ['0', 'SECTION', '2', 'ENTITIES'];
-    for (const it of project.items) {
-      lines.push(
-        '0',
-        'TEXT',
-        '8',
-        'DEFAULT',
-        '10',
-        '0',
-        '20',
-        '0',
-        '40',
-        '3',
-        '1',
-        it.itemType,
-      );
+    if (kind === BackgroundJobKind.RENDER_PREVIEW) {
+      await this.billing.getOrCheckQuota(userId, 'render');
+    } else {
+      await this.billing.getOrCheckQuota(userId, 'export');
     }
-    lines.push('0', 'ENDSEC', '0', 'EOF');
-    const body = Buffer.from(lines.join('\n'), 'utf8');
 
-    const key = await this.storage.saveBytes(
-      `exports/${userId}`,
-      this.storage.randomFilename('.dxf'),
-      body,
-    );
-
-    await this.prisma.exportArtifact.create({
+    const row = await this.prisma.backgroundJob.create({
       data: {
-        projectId: id,
+        kind,
         userId,
-        format: ExportFormat.DXF,
-        storageKey: key,
-        mimeType: 'application/dxf',
-        byteSize: body.byteLength,
+        projectId,
+        status: BackgroundJobStatus.PENDING,
       },
     });
 
-    const tariff = await this.billing.getActiveTariffForUser(userId);
-    await this.billing.incrementUsage(
-      userId,
-      'exportsUsed',
-      tariff?.maxExportPerMonth ?? null,
+    const bullJob = await this.heavyQueue.add(
+      'run',
+      {
+        backgroundJobId: row.id,
+        userId,
+        projectId,
+        kind,
+      } satisfies HeavyJobPayload,
+      { removeOnComplete: 100, removeOnFail: 50 },
     );
 
-    return { downloadPath: key, mimeType: 'application/dxf' };
+    await this.prisma.backgroundJob.update({
+      where: { id: row.id },
+      data: { bullJobId: String(bullJob.id) },
+    });
+
+    return {
+      backgroundJobId: row.id,
+      bullJobId: String(bullJob.id),
+      status: row.status,
+    };
   }
 
-  async exportInternal(userId: string, id: string) {
-    await this.billing.getOrCheckQuota(userId, 'export');
-    const project = await this.prisma.project.findFirst({
-      where: { id, userId },
-      include: { items: true },
-    });
-    if (!project) throw new NotFoundException();
+  async enqueueExportJson(userId: string, projectId: string) {
+    return this.enqueueHeavy(userId, projectId, BackgroundJobKind.EXPORT_JSON);
+  }
 
-    const envelope = {
-      format: 'furniture.internal',
-      version: project.projectFormatVersion,
-      projectId: project.id,
-      savedAt: new Date().toISOString(),
-      payload: project,
-    };
+  async enqueueExportPdf(userId: string, projectId: string) {
+    return this.enqueueHeavy(userId, projectId, BackgroundJobKind.EXPORT_PDF);
+  }
 
-    const body = Buffer.from(JSON.stringify(envelope), 'utf8');
-    const key = await this.storage.saveBytes(
-      `exports/${userId}`,
-      this.storage.randomFilename('.fproj.json'),
-      body,
-    );
+  async enqueueExportDxf(userId: string, projectId: string) {
+    return this.enqueueHeavy(userId, projectId, BackgroundJobKind.EXPORT_DXF);
+  }
 
-    await this.prisma.exportArtifact.create({
-      data: {
-        projectId: id,
-        userId,
-        format: ExportFormat.INTERNAL,
-        storageKey: key,
-        mimeType: 'application/json',
-        byteSize: body.byteLength,
-      },
-    });
-
-    const tariff = await this.billing.getActiveTariffForUser(userId);
-    await this.billing.incrementUsage(
+  async enqueueExportInternal(userId: string, projectId: string) {
+    return this.enqueueHeavy(
       userId,
-      'exportsUsed',
-      tariff?.maxExportPerMonth ?? null,
+      projectId,
+      BackgroundJobKind.EXPORT_INTERNAL,
     );
+  }
 
-    return { downloadPath: key, mimeType: 'application/json' };
+  async enqueueRenderPreview(userId: string, projectId: string) {
+    return this.enqueueHeavy(
+      userId,
+      projectId,
+      BackgroundJobKind.RENDER_PREVIEW,
+    );
+  }
+
+  async getBackgroundJob(userId: string, projectId: string, jobId: string) {
+    const job = await this.prisma.backgroundJob.findFirst({
+      where: { id: jobId, userId, projectId },
+    });
+    if (!job) throw new NotFoundException();
+    return job;
+  }
+
+  async streamBackgroundJobResult(
+    userId: string,
+    projectId: string,
+    jobId: string,
+  ): Promise<{
+    stream: NodeJS.ReadableStream;
+    mimeType: string;
+    filename: string;
+  }> {
+    const job = await this.getBackgroundJob(userId, projectId, jobId);
+    if (job.status !== BackgroundJobStatus.COMPLETED || !job.resultKey) {
+      throw new BadRequestException('Job not ready');
+    }
+
+    const stream = await this.storage.createReadStreamForKey(job.resultKey);
+    const mimeType = job.mimeType ?? 'application/octet-stream';
+    const ext =
+      job.kind === BackgroundJobKind.EXPORT_PDF
+        ? 'pdf'
+        : job.kind === BackgroundJobKind.EXPORT_DXF
+          ? 'dxf'
+          : job.kind === BackgroundJobKind.EXPORT_INTERNAL
+            ? 'fproj.json'
+            : 'json';
+    return {
+      stream,
+      mimeType,
+      filename: `project-${projectId}.${ext}`,
+    };
   }
 
   async importInternal(userId: string, dto: ImportInternalDto) {
@@ -461,43 +394,5 @@ export class ProjectsService {
     });
     if (!job?.imagePath) throw new NotFoundException();
     return { path: job.imagePath, mimeType: 'image/svg+xml' };
-  }
-
-  async renderPreview(userId: string, id: string) {
-    await this.billing.getOrCheckQuota(userId, 'render');
-    await this.getOne(userId, id);
-
-    const job = await this.prisma.renderJob.create({
-      data: {
-        projectId: id,
-        userId,
-      },
-    });
-
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
-      <rect width="800" height="600" fill="#0b1220"/>
-      <text x="40" y="80" fill="#e5e7eb" font-size="28" font-family="sans-serif">Preview ${id.slice(0, 8)}</text>
-      <rect x="120" y="200" width="520" height="280" fill="#1f2937" stroke="#3b82f6" stroke-width="2"/>
-    </svg>`;
-    const body = Buffer.from(svg, 'utf8');
-    const key = await this.storage.saveBytes(
-      `renders/${userId}`,
-      this.storage.randomFilename('.svg'),
-      body,
-    );
-
-    await this.prisma.renderJob.update({
-      where: { id: job.id },
-      data: { status: RenderJobStatus.DONE, imagePath: key },
-    });
-
-    const tariff = await this.billing.getActiveTariffForUser(userId);
-    await this.billing.incrementUsage(
-      userId,
-      'rendersUsed',
-      tariff?.maxRenderPerMonth ?? null,
-    );
-
-    return { jobId: job.id, imagePath: key, mimeType: 'image/svg+xml' };
   }
 }

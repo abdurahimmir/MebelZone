@@ -152,3 +152,17 @@ npm run build -w backend
 
 - Swagger `/docs`, Helmet, `.gitignore` для `storage/`, отчёт аудита: `docs/audit-report.md`
 
+---
+
+## Закрытие аудита (после этапа 13)
+
+**Статус:** выполнено
+
+- BullMQ + `background_jobs`, асинхронный экспорт/рендер
+- S3 (MinIO) + автосоздание bucket
+- OTP телефона + webhook SMS + UI на фронте
+- Расширенный расчёт + unit-тест
+- Строгий CORS в production, опциональный CSRF cookie endpoint
+- Lazy-загрузка редактора (Three.js)
+- GitHub Actions CI + testcontainers e2e при `RUN_TESTCONTAINERS=1`
+

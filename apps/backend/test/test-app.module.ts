@@ -17,6 +17,7 @@ import { PrismaModule } from '../src/prisma/prisma.module';
 import { ProjectsModule } from '../src/projects/projects.module';
 import { StorageModule } from '../src/storage/storage.module';
 import { SystemModule } from '../src/system/system.module';
+import { MockHeavyQueueModule } from './mock-heavy-queue.module';
 import { RedisTestModule } from './redis-test.module';
 
 @Module({
@@ -29,6 +30,7 @@ import { RedisTestModule } from './redis-test.module';
     }),
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 120 }]),
     RedisTestModule,
+    MockHeavyQueueModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({
       secret: 'test-access-secret-16chars',

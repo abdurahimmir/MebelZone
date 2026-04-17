@@ -23,10 +23,11 @@
 
 - Vue 3 (отдельное SPA)
 
-**Инфраструктура (по ТЗ)**
+**Инфраструктура**
 
-- BullMQ (очереди — последующие этапы)
-- S3-совместимое или файловое хранилище (последующие этапы)
+- **BullMQ** — очередь `heavy` (экспорт, превью-рендер)
+- **S3-совместимое хранилище** — MinIO в `docker-compose.yml` + переменные `S3_*` (иначе файлы в `STORAGE_DIR`)
+- **CI** — `.github/workflows/ci.yml`
 
 ## Архитектура репозитория
 
@@ -55,7 +56,7 @@ cp apps/admin/.env.example apps/admin/.env
 npm install
 ```
 
-3. Поднимите PostgreSQL и Redis (локально через Docker):
+3. Поднимите PostgreSQL, Redis и MinIO (локально через Docker):
 
 ```bash
 npm run docker:up
@@ -83,6 +84,8 @@ OpenAPI (Swagger UI): http://localhost:3000/api/docs
 После `npm run db:seed` доступен админ (см. `ADMIN_EMAIL` / `ADMIN_PASSWORD` в `.env.example`).
 
 Итоговый аудит: `docs/audit-report.md`.
+
+Интеграционные e2e с Testcontainers (нужен Docker): `RUN_TESTCONTAINERS=1 npm run test:e2e -w backend`.
 
 ## Документация ТЗ
 

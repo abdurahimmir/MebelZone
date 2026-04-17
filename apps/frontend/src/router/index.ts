@@ -1,10 +1,12 @@
+import { defineAsyncComponent } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import { authGuard } from './guards'
-import EditorView from '../views/EditorView.vue'
 import HomeView from '../views/HomeView.vue'
 import LoginView from '../views/LoginView.vue'
+import LoginPhoneView from '../views/LoginPhoneView.vue'
 import ProjectsView from '../views/ProjectsView.vue'
 import RegisterView from '../views/RegisterView.vue'
+import RegisterPhoneView from '../views/RegisterPhoneView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -28,6 +30,18 @@ const router = createRouter({
       meta: { public: true },
     },
     {
+      path: '/register-phone',
+      name: 'register-phone',
+      component: RegisterPhoneView,
+      meta: { public: true },
+    },
+    {
+      path: '/login-phone',
+      name: 'login-phone',
+      component: LoginPhoneView,
+      meta: { public: true },
+    },
+    {
       path: '/projects',
       name: 'projects',
       component: ProjectsView,
@@ -35,7 +49,7 @@ const router = createRouter({
     {
       path: '/editor/:id',
       name: 'editor',
-      component: EditorView,
+      component: defineAsyncComponent(() => import('../views/EditorView.vue')),
     },
   ],
 })

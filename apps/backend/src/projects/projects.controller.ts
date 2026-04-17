@@ -3,15 +3,16 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   Param,
   ParseUUIDPipe,
   Post,
   Put,
   Res,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { createReadStream } from 'fs';
 import {
   CurrentUser,
   type JwtUserPayload,
@@ -121,124 +122,79 @@ export class ProjectsController {
     @CurrentUser() user: JwtUserPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    return this.projects.renderPreview(user.sub, id);
+    return this.projects.enqueueRenderPreview(user.sub, id);
   }
 
-  @Get(':id/render-preview/:jobId')
-  async renderPreviewFile(
+  @Get(':id/jobs/:jobId')
+  getJob(
+    @CurrentUser() user: JwtUserPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('jobId', ParseUUIDPipe) jobId: string,
+  ) {
+    return this.projects.getBackgroundJob(user.sub, id, jobId);
+  }
+
+  @Get(':id/jobs/:jobId/download')
+  @Header('Cache-Control', 'no-store')
+  async downloadJob(
     @CurrentUser() user: JwtUserPayload,
     @Param('id', ParseUUIDPipe) id: string,
     @Param('jobId', ParseUUIDPipe) jobId: string,
     @Res({ passthrough: true }) res: Response,
   ) {
+    const { stream, mimeType, filename } =
+      await this.projects.streamBackgroundJobResult(user.sub, id, jobId);
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return new StreamableFile(stream as import('stream').Readable);
+  }
+
+  @Get(':id/render-preview/:renderJobId')
+  async renderPreviewFile(
+    @CurrentUser() user: JwtUserPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('renderJobId', ParseUUIDPipe) renderJobId: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const { path, mimeType } = await this.projects.getRenderArtifact(
       user.sub,
       id,
-      jobId,
+      renderJobId,
     );
-    const abs = this.storage.getAbsolutePath(path);
+    const stream = await this.storage.createReadStreamForKey(path);
     res.setHeader('Content-Type', mimeType);
-    return new Promise<void>((resolve, reject) => {
-      const stream = createReadStream(abs);
-      stream.on('error', reject);
-      stream.on('end', () => resolve());
-      stream.pipe(res);
-    });
+    return new StreamableFile(stream);
   }
 
   @Post(':id/export/json')
-  async exportJson(
+  exportJson(
     @CurrentUser() user: JwtUserPayload,
     @Param('id', ParseUUIDPipe) id: string,
-    @Res({ passthrough: true }) res: Response,
   ) {
-    const { downloadPath, mimeType } = await this.projects.exportJson(
-      user.sub,
-      id,
-    );
-    const abs = this.storage.getAbsolutePath(downloadPath);
-    res.setHeader('Content-Type', mimeType);
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="project-${id}.json"`,
-    );
-    return new Promise<void>((resolve, reject) => {
-      const stream = createReadStream(abs);
-      stream.on('error', reject);
-      stream.on('end', () => resolve());
-      stream.pipe(res);
-    });
+    return this.projects.enqueueExportJson(user.sub, id);
   }
 
   @Post(':id/export/pdf')
-  async exportPdf(
+  exportPdf(
     @CurrentUser() user: JwtUserPayload,
     @Param('id', ParseUUIDPipe) id: string,
-    @Res({ passthrough: true }) res: Response,
   ) {
-    const { downloadPath, mimeType } = await this.projects.exportPdf(
-      user.sub,
-      id,
-    );
-    const abs = this.storage.getAbsolutePath(downloadPath);
-    res.setHeader('Content-Type', mimeType);
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="project-${id}.pdf"`,
-    );
-    return new Promise<void>((resolve, reject) => {
-      const stream = createReadStream(abs);
-      stream.on('error', reject);
-      stream.on('end', () => resolve());
-      stream.pipe(res);
-    });
+    return this.projects.enqueueExportPdf(user.sub, id);
   }
 
   @Post(':id/export/dxf')
-  async exportDxf(
+  exportDxf(
     @CurrentUser() user: JwtUserPayload,
     @Param('id', ParseUUIDPipe) id: string,
-    @Res({ passthrough: true }) res: Response,
   ) {
-    const { downloadPath, mimeType } = await this.projects.exportDxf(
-      user.sub,
-      id,
-    );
-    const abs = this.storage.getAbsolutePath(downloadPath);
-    res.setHeader('Content-Type', mimeType);
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="project-${id}.dxf"`,
-    );
-    return new Promise<void>((resolve, reject) => {
-      const stream = createReadStream(abs);
-      stream.on('error', reject);
-      stream.on('end', () => resolve());
-      stream.pipe(res);
-    });
+    return this.projects.enqueueExportDxf(user.sub, id);
   }
 
   @Post(':id/export/internal')
-  async exportInternal(
+  exportInternal(
     @CurrentUser() user: JwtUserPayload,
     @Param('id', ParseUUIDPipe) id: string,
-    @Res({ passthrough: true }) res: Response,
   ) {
-    const { downloadPath, mimeType } = await this.projects.exportInternal(
-      user.sub,
-      id,
-    );
-    const abs = this.storage.getAbsolutePath(downloadPath);
-    res.setHeader('Content-Type', mimeType);
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="project-${id}.fproj.json"`,
-    );
-    return new Promise<void>((resolve, reject) => {
-      const stream = createReadStream(abs);
-      stream.on('error', reject);
-      stream.on('end', () => resolve());
-      stream.pipe(res);
-    });
+    return this.projects.enqueueExportInternal(user.sub, id);
   }
 }

@@ -1,14 +1,22 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { apiFetch } from '../api/http'
-import { downloadAuthorized, fetchAuthorizedBlob } from '../api/download'
+import { apiFetch, getAccessToken } from '../api/http'
+import { fetchAuthorizedBlob } from '../api/download'
 import ThreeEditor, { type EditorItem } from '../components/ThreeEditor.vue'
 
 type ProjectDetail = {
   id: string
   title: string
   items: EditorItem[]
+}
+
+type BackgroundJob = {
+  id: string
+  status: string
+  kind?: string
+  payloadJson?: { renderJobId?: string } | null
+  error?: string | null
 }
 
 const route = useRoute()
@@ -100,14 +108,53 @@ async function runCalc() {
   }
 }
 
+function baseUrl(): string {
+  return (import.meta.env.VITE_API_BASE_URL as string).replace(/\/$/, '')
+}
+
+async function pollBackgroundJob(projectId: string, jobId: string): Promise<BackgroundJob> {
+  const deadline = Date.now() + 60_000
+  while (Date.now() < deadline) {
+    const job = await apiFetch<BackgroundJob>(`/projects/${projectId}/jobs/${jobId}`)
+    if (job.status === 'COMPLETED' || job.status === 'FAILED') {
+      return job
+    }
+    await new Promise((r) => setTimeout(r, 400))
+  }
+  throw new Error('Timeout waiting for background job')
+}
+
+async function downloadJobFile(projectId: string, jobId: string, filename: string) {
+  const url = `${baseUrl()}/projects/${projectId}/jobs/${jobId}/download`
+  const headers = new Headers()
+  const token = getAccessToken()
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+  const res = await fetch(url, { method: 'GET', headers })
+  if (!res.ok) throw new Error(await res.text())
+  const blob = await res.blob()
+  const href = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = href
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(href)
+}
+
 async function exportFmt(kind: 'json' | 'pdf' | 'dxf' | 'internal') {
   if (!project.value) return
   busy.value = true
   try {
-    await downloadAuthorized(
+    const enq = await apiFetch<{ backgroundJobId: string }>(
       `/projects/${project.value.id}/export/${kind}`,
-      `project-${project.value.id}.${kind === 'internal' ? 'fproj.json' : kind}`,
+      { method: 'POST' },
     )
+    const job = await pollBackgroundJob(project.value.id, enq.backgroundJobId)
+    if (job.status === 'FAILED') {
+      throw new Error(job.error || 'Export failed')
+    }
+    const ext =
+      kind === 'internal' ? 'fproj.json' : kind === 'pdf' ? 'pdf' : kind === 'dxf' ? 'dxf' : 'json'
+    await downloadJobFile(project.value.id, job.id, `project-${project.value.id}.${ext}`)
   } finally {
     busy.value = false
   }
@@ -118,11 +165,18 @@ async function renderPrev() {
   busy.value = true
   previewUrl.value = null
   try {
-    const res = await apiFetch<{ jobId: string }>(`/projects/${project.value.id}/render-preview`, {
-      method: 'POST',
-    })
+    const enq = await apiFetch<{ backgroundJobId: string }>(
+      `/projects/${project.value.id}/render-preview`,
+      { method: 'POST' },
+    )
+    const job = await pollBackgroundJob(project.value.id, enq.backgroundJobId)
+    if (job.status === 'FAILED') {
+      throw new Error(job.error || 'Render failed')
+    }
+    const renderJobId = job.payloadJson?.renderJobId
+    if (!renderJobId) throw new Error('Missing render job id')
     previewUrl.value = await fetchAuthorizedBlob(
-      `/projects/${project.value.id}/render-preview/${res.jobId}`,
+      `/projects/${project.value.id}/render-preview/${renderJobId}`,
     )
   } finally {
     busy.value = false
@@ -137,7 +191,9 @@ onMounted(load)
     <aside class="left">
       <button class="back" type="button" @click="router.push('/projects')">← Проекты</button>
       <h2>{{ project.title }}</h2>
-      <p class="muted">Добавьте панель и сохраните проект. Расчёт и экспорт вызывают API.</p>
+      <p class="muted">
+        Экспорт и превью выполняются в фоне (BullMQ); после готовности файл скачивается автоматически.
+      </p>
 
       <div class="block">
         <h3>Новая панель</h3>

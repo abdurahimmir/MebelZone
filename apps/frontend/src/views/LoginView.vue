@@ -39,6 +39,8 @@ async function submit() {
     <p class="muted">
       Нет аккаунта?
       <RouterLink to="/register">Регистрация</RouterLink>
+      ·
+      <RouterLink to="/login-phone">Телефон</RouterLink>
     </p>
   </div>
 </template>

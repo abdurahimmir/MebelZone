@@ -13,6 +13,7 @@ import { LogoutDto } from './dto/logout.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterEmailDto } from './dto/register-email.dto';
 import { RegisterPhoneDto } from './dto/register-phone.dto';
+import { SendPhoneOtpDto } from './dto/send-phone-otp.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -28,6 +29,12 @@ export class AuthController {
   @Post('login/email')
   loginEmail(@Body() dto: LoginEmailDto) {
     return this.auth.loginEmail(dto);
+  }
+
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('phone/send-otp')
+  sendPhoneOtp(@Body() dto: SendPhoneOtpDto) {
+    return this.auth.sendPhoneOtp(dto.phone);
   }
 
   @Throttle({ default: { limit: 10, ttl: 60_000 } })

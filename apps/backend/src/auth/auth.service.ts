@@ -81,6 +81,81 @@ export class AuthService {
     return `refresh:${userId}:${jti}`;
   }
 
+  private otpPhoneKey(normalizedPhone: string): string {
+    return `otp:phone:${normalizedPhone}`;
+  }
+
+  private generateOtpCode(): string {
+    return String(Math.floor(100000 + Math.random() * 900000));
+  }
+
+  async sendPhoneOtp(phone: string) {
+    const enabled = await this.system.getBooleanSetting(
+      'auth.phone.enabled',
+      false,
+    );
+    if (!enabled) throw new ForbiddenException('Phone OTP is disabled');
+
+    if (!this.redis) {
+      throw new BadRequestException('REDIS_URL is required for phone OTP');
+    }
+
+    const normalized = phone.replace(/\s+/g, '');
+    const throttleKey = `otp:throttle:${normalized}`;
+    const attempts = await this.redis.incr(throttleKey);
+    if (attempts === 1) {
+      await this.redis.expire(throttleKey, 60);
+    }
+    if (attempts > 5) {
+      throw new BadRequestException('Too many OTP requests, try again later');
+    }
+
+    const code = this.generateOtpCode();
+    await this.redis.set(this.otpPhoneKey(normalized), code, 'EX', 300);
+
+    const webhookUnknown: unknown = this.config.get('SMS_WEBHOOK_URL');
+    const webhook =
+      typeof webhookUnknown === 'string' && webhookUnknown.trim().length > 0
+        ? webhookUnknown.trim()
+        : undefined;
+
+    if (webhook) {
+      void fetch(webhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: normalized, code }),
+      }).catch(() => undefined);
+    }
+
+    const exposeUnknown: unknown = this.config.get('EXPOSE_DEV_OTP');
+    const expose =
+      exposeUnknown === true ||
+      exposeUnknown === 'true' ||
+      (typeof exposeUnknown === 'string' &&
+        exposeUnknown.toLowerCase() === 'true');
+
+    return {
+      ok: true,
+      expiresIn: 300,
+      ...(expose ? { devCode: code } : {}),
+    };
+  }
+
+  private async consumePhoneOtp(
+    normalizedPhone: string,
+    otp: string,
+  ): Promise<void> {
+    if (!this.redis) {
+      throw new BadRequestException('REDIS_URL is required for phone OTP');
+    }
+    const key = this.otpPhoneKey(normalizedPhone);
+    const stored = await this.redis.get(key);
+    if (!stored || stored !== otp) {
+      throw new UnauthorizedException('Invalid or expired OTP');
+    }
+    await this.redis.del(key);
+  }
+
   private async persistRefreshSession(
     userId: string,
     jti: string,
@@ -199,6 +274,8 @@ export class AuthService {
       throw new ForbiddenException('Phone registration is disabled');
 
     const normalized = dto.phone.replace(/\s+/g, '');
+    await this.consumePhoneOtp(normalized, dto.otp);
+
     const existing = await this.prisma.user.findUnique({
       where: { phone: normalized },
     });
@@ -235,13 +312,22 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({
       where: { phone: normalized },
     });
-    if (!user?.passwordHash)
-      throw new UnauthorizedException('Invalid credentials');
+    if (!user) throw new UnauthorizedException('Invalid credentials');
     if (user.status !== UserStatus.ACTIVE)
       throw new UnauthorizedException('Account inactive');
 
-    const ok = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!ok) throw new UnauthorizedException('Invalid credentials');
+    if (dto.otp) {
+      await this.consumePhoneOtp(normalized, dto.otp);
+    } else {
+      if (!dto.password) {
+        throw new BadRequestException('password or otp is required');
+      }
+      if (!user.passwordHash) {
+        throw new UnauthorizedException('Invalid credentials');
+      }
+      const ok = await bcrypt.compare(dto.password, user.passwordHash);
+      if (!ok) throw new UnauthorizedException('Invalid credentials');
+    }
 
     await this.prisma.user.update({
       where: { id: user.id },

@@ -6,9 +6,11 @@ import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
 import { BillingModule } from './billing/billing.module';
 import { CatalogModule } from './catalog/catalog.module';
+import { CsrfModule } from './csrf/csrf.module';
 import { ClientsModule } from './clients/clients.module';
 import { envValidationSchema } from './config/env.validation';
 import { HealthModule } from './health/health.module';
+import { JobsModule } from './jobs/jobs.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProjectsModule } from './projects/projects.module';
 import { RedisModule } from './redis/redis.module';
@@ -37,7 +39,9 @@ import { SystemModule } from './system/system.module';
     SystemModule,
     StorageModule,
     BillingModule,
+    JobsModule,
     AuthModule,
+    CsrfModule,
     ClientsModule,
     ProjectsModule,
     CatalogModule,
