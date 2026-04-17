@@ -28,9 +28,15 @@ describe('Health (e2e)', () => {
     const res = await request(app.getHttpServer())
       .get('/api/health')
       .expect(200);
-    const body = res.body as { status: string; service: string };
+    const body = res.body as {
+      status: string;
+      service: string;
+      dependencies: { database: string; redis: string };
+    };
     expect(body.status).toBe('ok');
     expect(body.service).toBeTruthy();
+    expect(body.dependencies.database).toBeDefined();
+    expect(body.dependencies.redis).toBeDefined();
   });
 
   afterEach(async () => {

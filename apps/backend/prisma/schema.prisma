@@ -1,0 +1,320 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  BLOCKED
+  DELETED
+}
+
+enum AuthProviderType {
+  EMAIL
+  PHONE
+  GOOGLE
+}
+
+enum ProjectStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  EXPIRED
+  TRIAL
+}
+
+model User {
+  id           String     @id @default(uuid()) @db.Uuid
+  fullName     String     @map("full_name")
+  email        String?    @unique
+  phone        String?    @unique
+  googleId     String?    @unique @map("google_id")
+  passwordHash String?    @map("password_hash") @db.Text
+  role         UserRole   @default(USER)
+  status       UserStatus @default(ACTIVE)
+  avatar       String?    @map("avatar") @db.Text
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+  lastLoginAt  DateTime?  @map("last_login_at")
+
+  authProviders UserAuthProvider[]
+  clients       Client[]
+  projects      Project[]
+  subscriptions Subscription[]
+
+  @@index([role])
+  @@index([status])
+  @@map("users")
+}
+
+model UserAuthProvider {
+  id           String             @id @default(uuid()) @db.Uuid
+  userId       String             @map("user_id") @db.Uuid
+  providerType AuthProviderType   @map("provider_type")
+  providerUid  String             @map("provider_uid")
+  metaJson     Json?              @map("meta_json")
+  createdAt    DateTime           @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerType, providerUid])
+  @@index([userId])
+  @@map("user_auth_providers")
+}
+
+model Client {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  name        String
+  phone       String?
+  email       String?
+  comment     String?  @db.Text
+  companyName String?  @map("company_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projects Project[]
+
+  @@index([userId])
+  @@index([companyName])
+  @@map("clients")
+}
+
+model Project {
+  id                    String         @id @default(uuid()) @db.Uuid
+  userId                String         @map("user_id") @db.Uuid
+  clientId              String?        @map("client_id") @db.Uuid
+  title                 String
+  description           String?        @db.Text
+  status                ProjectStatus  @default(DRAFT)
+  previewImage          String?        @map("preview_image") @db.Text
+  projectFormatVersion  Int            @default(1) @map("project_format_version")
+  savedViewMode         String?        @map("saved_view_mode")
+  savedCameraStateJson  Json?          @map("saved_camera_state_json")
+  savedUiStateJson      Json?          @map("saved_ui_state_json")
+  totalCostCached       Decimal?       @map("total_cost_cached") @db.Decimal(14, 2)
+  totalMaterialCostCached Decimal?     @map("total_material_cost_cached") @db.Decimal(14, 2)
+  totalHardwareCostCached Decimal?     @map("total_hardware_cost_cached") @db.Decimal(14, 2)
+  createdAt             DateTime       @default(now()) @map("created_at")
+  updatedAt             DateTime       @updatedAt @map("updated_at")
+  lastOpenedAt          DateTime?      @map("last_opened_at")
+
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client        Client?              @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  versions      ProjectVersion[]
+  items         ProjectItem[]
+  calculations  ProjectCalculation[]
+  extraCostItems ExtraCostItem[]
+
+  @@index([userId])
+  @@index([clientId])
+  @@index([status])
+  @@index([updatedAt])
+  @@map("projects")
+}
+
+model ProjectVersion {
+  id                String   @id @default(uuid()) @db.Uuid
+  projectId         String   @map("project_id") @db.Uuid
+  versionNumber     Int      @map("version_number")
+  snapshotJson      Json     @map("snapshot_json")
+  internalBinaryPath String? @map("internal_binary_path") @db.Text
+  comment           String?  @db.Text
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, versionNumber])
+  @@index([projectId])
+  @@map("project_versions")
+}
+
+model Material {
+  id               String   @id @default(uuid()) @db.Uuid
+  category         String
+  title            String
+  thicknessMm      Int      @map("thickness_mm")
+  sheetWidthMm     Int      @map("sheet_width_mm")
+  sheetHeightMm    Int      @map("sheet_height_mm")
+  pricePerSheet    Decimal  @map("price_per_sheet") @db.Decimal(12, 2)
+  pricePerM2       Decimal? @map("price_per_m2") @db.Decimal(12, 2)
+  density          Decimal? @db.Decimal(10, 3)
+  defaultTextureId String?  @map("default_texture_id") @db.Uuid
+  isActive         Boolean  @default(true) @map("is_active")
+
+  defaultTexture Texture?      @relation("MaterialDefaultTexture", fields: [defaultTextureId], references: [id], onDelete: SetNull)
+  projectItems   ProjectItem[]
+
+  @@index([category])
+  @@index([isActive])
+  @@map("materials")
+}
+
+model Texture {
+  id               String   @id @default(uuid()) @db.Uuid
+  title            String
+  previewImage     String   @map("preview_image") @db.Text
+  texturePath      String   @map("texture_path") @db.Text
+  normalMapPath    String?  @map("normal_map_path") @db.Text
+  roughnessMapPath String?  @map("roughness_map_path") @db.Text
+  isActive         Boolean  @default(true) @map("is_active")
+
+  materialsAsDefault Material[] @relation("MaterialDefaultTexture")
+  projectItems       ProjectItem[]
+
+  @@index([isActive])
+  @@map("textures")
+}
+
+model HardwareType {
+  id       String  @id @default(uuid()) @db.Uuid
+  category String
+  title    String
+  subtype  String
+  unit     String
+  price    Decimal @db.Decimal(12, 2)
+  metaJson Json?   @map("meta_json")
+  isActive Boolean @default(true) @map("is_active")
+
+  @@index([category])
+  @@index([isActive])
+  @@map("hardware_types")
+}
+
+model HardwarePreset {
+  id        String  @id @default(uuid()) @db.Uuid
+  title     String
+  category  String
+  configJson Json   @map("config_json")
+  isActive  Boolean @default(true) @map("is_active")
+
+  projectItems ProjectItem[]
+
+  @@index([category])
+  @@index([isActive])
+  @@map("hardware_presets")
+}
+
+model ProjectItem {
+  id                 String   @id @default(uuid()) @db.Uuid
+  projectId          String   @map("project_id") @db.Uuid
+  itemType           String   @map("item_type")
+  parentId           String?  @map("parent_id") @db.Uuid
+  materialId         String?  @map("material_id") @db.Uuid
+  textureId          String?  @map("texture_id") @db.Uuid
+  hardwarePresetId   String?  @map("hardware_preset_id") @db.Uuid
+  geometryJson       Json     @map("geometry_json")
+  transformJson      Json     @map("transform_json")
+  dimensionJson      Json     @map("dimension_json")
+  styleJson          Json?    @map("style_json")
+  rulesJson          Json?    @map("rules_json")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  project         Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent          ProjectItem?    @relation("ProjectItemHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children        ProjectItem[]   @relation("ProjectItemHierarchy")
+  material        Material?       @relation(fields: [materialId], references: [id], onDelete: SetNull)
+  texture         Texture?        @relation(fields: [textureId], references: [id], onDelete: SetNull)
+  hardwarePreset  HardwarePreset? @relation(fields: [hardwarePresetId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([parentId])
+  @@index([itemType])
+  @@map("project_items")
+}
+
+model ProjectCalculation {
+  id            String   @id @default(uuid()) @db.Uuid
+  projectId     String   @map("project_id") @db.Uuid
+  materialsJson Json     @map("materials_json")
+  hardwareJson  Json     @map("hardware_json")
+  edgingJson    Json     @map("edging_json")
+  cuttingJson   Json     @map("cutting_json")
+  warningsJson  Json     @map("warnings_json")
+  extraCostsJson Json    @map("extra_costs_json")
+  totalsJson    Json     @map("totals_json")
+  calculatedAt  DateTime @default(now()) @map("calculated_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([calculatedAt])
+  @@map("project_calculations")
+}
+
+model ExtraCostItem {
+  id        String   @id @default(uuid()) @db.Uuid
+  projectId String   @map("project_id") @db.Uuid
+  title     String
+  amount    Decimal  @db.Decimal(14, 4)
+  unit      String
+  price     Decimal  @db.Decimal(12, 2)
+  total     Decimal  @db.Decimal(14, 2)
+  comment   String?  @db.Text
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("extra_cost_items")
+}
+
+model Tariff {
+  id                 String   @id @default(uuid()) @db.Uuid
+  title              String
+  code               String   @unique
+  monthlyPrice       Decimal  @map("monthly_price") @db.Decimal(12, 2)
+  yearlyPrice        Decimal? @map("yearly_price") @db.Decimal(12, 2)
+  maxProjects        Int?     @map("max_projects")
+  maxRenderPerMonth  Int?     @map("max_render_per_month")
+  maxExportPerMonth  Int?     @map("max_export_per_month")
+  featuresJson       Json?    @map("features_json")
+  isActive           Boolean  @default(true) @map("is_active")
+
+  subscriptions Subscription[]
+
+  @@index([isActive])
+  @@map("tariffs")
+}
+
+model Subscription {
+  id        String            @id @default(uuid()) @db.Uuid
+  userId    String            @map("user_id") @db.Uuid
+  tariffId  String            @map("tariff_id") @db.Uuid
+  status    SubscriptionStatus @default(ACTIVE)
+  startedAt DateTime          @default(now()) @map("started_at")
+  endedAt   DateTime?         @map("ended_at")
+  metaJson  Json?             @map("meta_json")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tariff Tariff @relation(fields: [tariffId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([tariffId])
+  @@index([status])
+  @@map("subscriptions")
+}
+
+model SystemSetting {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  valueJson Json     @map("value_json")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}

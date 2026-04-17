@@ -9,7 +9,12 @@
     "node": ">=20"
   },
   "scripts": {
-    "postinstall": "npm run build -w @furniture/shared",
+    "postinstall": "npm run build -w @furniture/shared && npm run prisma:generate -w backend",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "db:migrate": "npm run prisma:migrate -w backend",
+    "db:seed": "npm run db:seed -w backend",
+    "prisma:generate": "npm run prisma:generate -w backend",
     "dev:backend": "npm run start:dev -w backend",
     "dev:frontend": "npm run dev -w frontend",
     "dev:admin": "npm run dev -w admin",

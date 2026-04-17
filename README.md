@@ -8,8 +8,8 @@
 
 - NestJS
 - PostgreSQL
-- Prisma (подключается на Этапе 2)
-- Redis
+- Prisma ORM + SQL-миграции (`apps/backend/prisma`)
+- Redis (кеш/сессии; ioredis в backend)
 
 **Frontend**
 
@@ -55,13 +55,28 @@ cp apps/admin/.env.example apps/admin/.env
 npm install
 ```
 
-3. Запуск в режиме разработки:
+3. Поднимите PostgreSQL и Redis (локально через Docker):
+
+```bash
+npm run docker:up
+```
+
+4. Примените миграции и сиды:
+
+```bash
+npm run db:migrate
+npm run db:seed
+```
+
+5. Запуск в режиме разработки:
 
 ```bash
 npm run dev:backend   # http://localhost:3000/api/health
 npm run dev:frontend # http://localhost:5173
 npm run dev:admin    # http://localhost:5174
 ```
+
+`GET /api/health` возвращает также статус зависимостей `database` и `redis` (`ok` / `unavailable` / `not_configured`).
 
 ## Документация ТЗ
 
