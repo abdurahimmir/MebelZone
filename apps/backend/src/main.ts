@@ -1,6 +1,8 @@
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -11,6 +13,7 @@ async function bootstrap() {
   const port = Number(config.get('PORT') ?? 3000);
   const apiPrefix = String(config.get('API_PREFIX') ?? 'api');
 
+  app.use(helmet());
   app.setGlobalPrefix(apiPrefix);
   app.useGlobalPipes(
     new ValidationPipe({
@@ -34,6 +37,15 @@ async function bootstrap() {
   } else {
     app.enableCors({ origin: true });
   }
+
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('Furniture API')
+    .setDescription('HTTP API для сервиса проектирования мебели')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+  const document = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('docs', app, document);
 
   await app.listen(port);
   logger.log(`HTTP listening on :${port} (prefix /${apiPrefix})`);

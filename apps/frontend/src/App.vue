@@ -8,6 +8,8 @@ import { RouterView } from 'vue-router'
       <div class="brand">Furniture Constructor</div>
       <nav class="nav">
         <RouterLink to="/">Главная</RouterLink>
+        <RouterLink to="/projects">Проекты</RouterLink>
+        <RouterLink to="/login">Вход</RouterLink>
       </nav>
     </header>
 

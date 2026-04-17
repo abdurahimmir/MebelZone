@@ -55,3 +55,100 @@ npm run test -w backend
 npm run test:e2e -w backend
 npm run build -w backend
 ```
+
+---
+
+## Этап 3 — Авторизация
+
+**Статус:** выполнено (MVP)
+
+- JWT access + refresh (refresh в Redis), bcrypt для пароля
+- Email / phone / Google (`id_token`), feature flags в `system_settings`
+- Эндпоинты: `POST /api/auth/register/email`, `login/email`, `register/phone`, `login/phone`, `google`, `refresh`, `logout`, `GET /api/auth/me`
+- Throttler на auth, `JwtAuthGuard`, `AdminRoleGuard`
+
+---
+
+## Этап 4 — Клиенты и проекты
+
+**Статус:** выполнено (MVP)
+
+- CRUD `/api/clients`, `GET /api/clients/:id/projects`
+- CRUD `/api/projects`, duplicate, save, save-version, versions, calculations
+- Импорт внутреннего формата: `POST /api/projects/import/internal`
+
+---
+
+## Этап 5 — Каталоги
+
+**Статус:** выполнено (MVP)
+
+- `GET /api/materials`, `/textures`, `/hardware`, `/profiles`, `/default-presets`
+
+---
+
+## Этап 6 — Frontend ядро
+
+**Статус:** выполнено (MVP)
+
+- Роутинг: логин, регистрация, список проектов, guard по токену
+- API-клиент с refresh, хранение токенов в `localStorage`
+
+---
+
+## Этап 7 — Конструктор
+
+**Статус:** выполнено (MVP)
+
+- Страница редактора: Three.js сцена, сетка, добавление панелей, сохранение через `POST /api/projects/:id/save`
+
+---
+
+## Этап 8 — Расчёты
+
+**Статус:** выполнено (упрощённый движок)
+
+- `POST /api/projects/:id/calculate` — эвристика по панелям, предупреждения, запись в `project_calculations` и кеш полей проекта
+
+---
+
+## Этап 9 — Экспорт
+
+**Статус:** выполнено (MVP)
+
+- `POST /api/projects/:id/export/{json,pdf,dxf,internal}` — файлы в `STORAGE_DIR`, учёт квоты `usage_monthly_counters`
+
+---
+
+## Этап 10 — Рендер
+
+**Статус:** выполнено (MVP-заглушка)
+
+- `POST /api/projects/:id/render-preview` + `GET .../render-preview/:jobId` — SVG-превью, запись `render_jobs`
+
+---
+
+## Этап 11 — Админка
+
+**Статус:** выполнено (MVP)
+
+- SPA: dashboard, пользователи, проекты, материалы, JSON-списки, настройки
+- API `/api/admin/*` с аудитом `admin_audit_logs`
+
+---
+
+## Этап 12 — Монетизация
+
+**Статус:** выполнено (MVP)
+
+- Тарифы, подписки, лимиты проектов и месячные лимиты рендер/экспорт
+- Назначение тарифа админом: `POST /api/admin/users/:id/subscription`
+
+---
+
+## Этап 13 — Финализация
+
+**Статус:** выполнено
+
+- Swagger `/docs`, Helmet, `.gitignore` для `storage/`, отчёт аудита: `docs/audit-report.md`
+

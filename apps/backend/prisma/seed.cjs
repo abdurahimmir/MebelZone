@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient, UserRole, UserStatus, AuthProviderType } = require('@prisma/client');
+const bcrypt = require('bcrypt');
 
 const prisma = new PrismaClient();
 
@@ -113,6 +114,59 @@ async function main() {
       ],
     });
   }
+
+  const adminEmail = (process.env.ADMIN_EMAIL || 'admin@example.com').toLowerCase();
+  const adminPassword = process.env.ADMIN_PASSWORD || 'Admin12345678';
+  const adminHash = await bcrypt.hash(adminPassword, 12);
+
+  await prisma.user.upsert({
+    where: { email: adminEmail },
+    create: {
+      fullName: 'System Admin',
+      email: adminEmail,
+      passwordHash: adminHash,
+      role: UserRole.ADMIN,
+      status: UserStatus.ACTIVE,
+      authProviders: {
+        create: {
+          providerType: AuthProviderType.EMAIL,
+          providerUid: adminEmail,
+        },
+      },
+    },
+    update: {
+      fullName: 'System Admin',
+      passwordHash: adminHash,
+      role: UserRole.ADMIN,
+      status: UserStatus.ACTIVE,
+    },
+  });
+
+  const sampleTextureId = '11111111-1111-1111-1111-111111111101';
+  await prisma.texture.upsert({
+    where: { id: sampleTextureId },
+    create: {
+      id: sampleTextureId,
+      title: 'Sample wood',
+      previewImage: '/textures/sample-preview.png',
+      texturePath: '/textures/sample.png',
+      isActive: true,
+    },
+    update: { isActive: true },
+  });
+
+  const profilePresetId = '22222222-2222-2222-2222-222222222201';
+  await prisma.hardwarePreset.upsert({
+    where: { id: profilePresetId },
+    create: {
+      id: profilePresetId,
+      title: 'Coupe profile basic',
+      category: 'profile_coupe',
+      configJson: { trackWidthMm: 80 },
+      isActive: true,
+    },
+    update: { isActive: true },
+  });
 }
 
 main()

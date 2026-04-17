@@ -55,6 +55,10 @@ model User {
   clients       Client[]
   projects      Project[]
   subscriptions Subscription[]
+  usageCounters UsageMonthlyCounter[]
+  adminAuditLogs AdminAuditLog[]
+  renderJobs    RenderJob[]
+  exportArtifacts ExportArtifact[]
 
   @@index([role])
   @@index([status])
@@ -79,6 +83,7 @@ model UserAuthProvider {
 model Client {
   id          String   @id @default(uuid()) @db.Uuid
   userId      String   @map("user_id") @db.Uuid
+  companyId   String?  @map("company_id") @db.Uuid
   name        String
   phone       String?
   email       String?
@@ -91,6 +96,7 @@ model Client {
   projects Project[]
 
   @@index([userId])
+  @@index([companyId])
   @@index([companyName])
   @@map("clients")
 }
@@ -98,6 +104,7 @@ model Client {
 model Project {
   id                    String         @id @default(uuid()) @db.Uuid
   userId                String         @map("user_id") @db.Uuid
+  companyId             String?        @map("company_id") @db.Uuid
   clientId              String?        @map("client_id") @db.Uuid
   title                 String
   description           String?        @db.Text
@@ -120,8 +127,11 @@ model Project {
   items         ProjectItem[]
   calculations  ProjectCalculation[]
   extraCostItems ExtraCostItem[]
+  renderJobs    RenderJob[]
+  exportArtifacts ExportArtifact[]
 
   @@index([userId])
+  @@index([companyId])
   @@index([clientId])
   @@index([status])
   @@index([updatedAt])
@@ -317,4 +327,87 @@ model SystemSetting {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("system_settings")
+}
+
+enum RenderJobStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
+enum ExportFormat {
+  JSON
+  PDF
+  DXF
+  INTERNAL
+}
+
+model UsageMonthlyCounter {
+  id           String @id @default(uuid()) @db.Uuid
+  userId       String @map("user_id") @db.Uuid
+  yearMonth    String @map("year_month")
+  rendersUsed  Int    @default(0) @map("renders_used")
+  exportsUsed  Int    @default(0) @map("exports_used")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, yearMonth])
+  @@index([yearMonth])
+  @@map("usage_monthly_counters")
+}
+
+model AdminAuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  adminId    String   @map("admin_id") @db.Uuid
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id") @db.Uuid
+  payload    Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  admin User @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId])
+  @@index([entityType])
+  @@index([createdAt])
+  @@map("admin_audit_logs")
+}
+
+model RenderJob {
+  id         String          @id @default(uuid()) @db.Uuid
+  projectId  String          @map("project_id") @db.Uuid
+  userId     String          @map("user_id") @db.Uuid
+  status     RenderJobStatus @default(PENDING)
+  imagePath  String?         @map("image_path") @db.Text
+  error      String?         @db.Text
+  createdAt  DateTime        @default(now()) @map("created_at")
+  updatedAt  DateTime        @updatedAt @map("updated_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([userId])
+  @@index([status])
+  @@map("render_jobs")
+}
+
+model ExportArtifact {
+  id        String       @id @default(uuid()) @db.Uuid
+  projectId String       @map("project_id") @db.Uuid
+  userId    String       @map("user_id") @db.Uuid
+  format    ExportFormat
+  storageKey String      @map("storage_key") @db.Text
+  mimeType  String       @map("mime_type")
+  byteSize  Int          @map("byte_size")
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([userId])
+  @@index([format])
+  @@map("export_artifacts")
 }

@@ -78,6 +78,12 @@ npm run dev:admin    # http://localhost:5174
 
 `GET /api/health` возвращает также статус зависимостей `database` и `redis` (`ok` / `unavailable` / `not_configured`).
 
+OpenAPI (Swagger UI): http://localhost:3000/api/docs
+
+После `npm run db:seed` доступен админ (см. `ADMIN_EMAIL` / `ADMIN_PASSWORD` в `.env.example`).
+
+Итоговый аудит: `docs/audit-report.md`.
+
 ## Документация ТЗ
 
 См. `docs/` и `TECHS.md`.

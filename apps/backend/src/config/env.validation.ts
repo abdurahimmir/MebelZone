@@ -13,4 +13,6 @@ export const envValidationSchema = Joi.object({
   JWT_ACCESS_TTL: Joi.number().integer().positive().optional(),
   JWT_REFRESH_TTL: Joi.number().integer().positive().optional(),
   CORS_ORIGIN: Joi.string().optional(),
+  GOOGLE_CLIENT_ID: Joi.string().optional(),
+  STORAGE_DIR: Joi.string().optional(),
 });

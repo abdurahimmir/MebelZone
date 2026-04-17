@@ -10,6 +10,9 @@ dist/
 .env.local
 .env.*.local
 
+# App storage (exports, renders)
+storage/
+
 # Logs and caches
 logs/
 *.log
