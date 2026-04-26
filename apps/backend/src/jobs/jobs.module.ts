@@ -2,11 +2,13 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BillingModule } from '../billing/billing.module';
+import { StorageModule } from '../storage/storage.module';
 import { HEAVY_QUEUE, ProjectHeavyProcessor } from './project-heavy.processor';
 
 @Module({
   imports: [
     BillingModule,
+    StorageModule,
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

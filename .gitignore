@@ -11,7 +11,10 @@ dist/
 .env.*.local
 
 # App storage (exports, renders)
-storage/
+/storage/
+
+# Local run logs
+/.run-logs/
 
 # Logs and caches
 logs/
